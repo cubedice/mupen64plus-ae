@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.22)
+cmake_minimum_required(VERSION 3.10)
 
 project( GLideNHQ )
 
@@ -21,6 +21,15 @@ set(GLideNHQ_SOURCES
   TxTexCache.cpp
   TxUtil.cpp
 )
+
+list(APPEND GLideNHQ_SOURCES
+  zstd/zstd_zlibwrapper.c
+  zstd/gzclose.c
+  zstd/gzlib.c
+  zstd/gzread.c
+  zstd/gzwrite.c
+)
+add_definitions( -DZWRAP_USE_ZSTD )
 
 if(MINGW OR PANDORA OR BCMHOST)
   include_directories( ${CMAKE_CURRENT_SOURCE_DIR}/../osal )
@@ -65,7 +74,7 @@ if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "MSVC")
 	add_definitions( -D__MSC__)
 endif()
 
-if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU" OR "${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang")
+if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU" OR "${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
     SET(GCC_CPP11_COMPILE_FLAGS "-std=c++0x -Wno-unused-result")
     if ( NOT MINGW )
       SET ( PIC_FLAGS "-fPIC" )
@@ -88,14 +97,17 @@ if( GLIDEN64_BUILD_TYPE STREQUAL "Debug")
   if(MINGW OR BCMHOST OR APPLE OR USE_SYSTEM_LIBS)
     FIND_PACKAGE( ZLIB REQUIRED )
     FIND_PACKAGE( PNG REQUIRED )
+    FIND_PACKAGE( ZSTD REQUIRED )
     target_link_libraries(GLideNHQd
       ${PNG_LIBRARIES}
       ${ZLIB_LIBRARIES}
+      zstd::libzstd_static
       osald
     )
   elseif(ANDROID)
       target_link_libraries(GLideNHQ PRIVATE
               ${ANDROID_LIB_PATH}/libs/${BUILD_VARIANT}/${ANDROID_ABI}/libpng.a
+              ${ANDROID_LIB_PATH}/libs/${BUILD_VARIANT}/${ANDROID_ABI}/libzstd.a
               z
               dl
               osal
@@ -104,6 +116,7 @@ if( GLIDEN64_BUILD_TYPE STREQUAL "Debug")
     target_link_libraries(GLideNHQd PRIVATE
       ${CMAKE_CURRENT_SOURCE_DIR}/lib/libpng.a
       ${CMAKE_CURRENT_SOURCE_DIR}/lib/libz.a
+      ${CMAKE_CURRENT_SOURCE_DIR}/lib/libzstd.a
       dl
       osald
     )
@@ -120,19 +133,23 @@ else( GLIDEN64_BUILD_TYPE STREQUAL "Debug")
     target_link_libraries(GLideNHQ PRIVATE
       /mnt/utmp/codeblocks/usr/lib/libpng.a
       /mnt/utmp/codeblocks/usr/lib/libz.a
+      /mnt/utmp/codeblocks/usr/lib/libzstd.a
       osal
     )
   elseif(BCMHOST OR MINGW OR APPLE OR USE_SYSTEM_LIBS)
     FIND_PACKAGE( ZLIB REQUIRED )
     FIND_PACKAGE( PNG REQUIRED )
+    FIND_PACKAGE( ZSTD REQUIRED )
     target_link_libraries(GLideNHQ
       ${PNG_LIBRARIES}
       ${ZLIB_LIBRARIES}
+      zstd::libzstd_static
       osal
     )
   elseif(ANDROID)
     target_link_libraries(GLideNHQ PRIVATE
       ${ANDROID_LIB_PATH}/libs/${BUILD_VARIANT}/${ANDROID_ABI}/libpng.a
+      ${ANDROID_LIB_PATH}/libs/${BUILD_VARIANT}/${ANDROID_ABI}/libzstd.a
       z
       dl
       osal
@@ -141,6 +158,7 @@ else( GLIDEN64_BUILD_TYPE STREQUAL "Debug")
     target_link_libraries(GLideNHQ PRIVATE
       ${CMAKE_CURRENT_SOURCE_DIR}/lib/libpng.a
       ${CMAKE_CURRENT_SOURCE_DIR}/lib/libz.a
+      ${CMAKE_CURRENT_SOURCE_DIR}/lib/libzstd.a
       dl
       osal
     )

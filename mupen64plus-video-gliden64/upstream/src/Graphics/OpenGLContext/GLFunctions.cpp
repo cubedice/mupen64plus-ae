@@ -8,6 +8,7 @@
 #define GL_GET_PROC_ADR(proc_type, proc_name) ptr##proc_name = (proc_type) glGetProcAddress("gl"#proc_name)
 
 #elif defined(VERO4K) || defined(ODROID) || defined(VC)
+#include <dlfcn.h>
 
 #define GL_GET_PROC_ADR(proc_type, proc_name) ptr##proc_name = (proc_type) dlsym(gles2so, "gl"#proc_name);
 
@@ -58,6 +59,16 @@ static void* IOSGLGetProcAddress (const char *name)
 #define glGetProcAddress IOSGLGetProcAddress
 #define GL_GET_PROC_ADR(proc_type, proc_name) ptr##proc_name = (proc_type)glGetProcAddress("gl"#proc_name)
 
+#elif defined(OS_FREEBSD)
+  #include <GL/glx.h>
+
+  #ifndef glGetProcAddress
+    #define glGetProcAddress glXGetProcAddress
+  #endif
+
+  #undef GL_GET_PROC_ADR
+  #define GL_GET_PROC_ADR(proc_type, proc_name) \
+      ptr##proc_name = (proc_type) glGetProcAddress((const GLubyte*)"gl" #proc_name)
 #endif
 
 //GL Functions
@@ -178,6 +189,8 @@ PFNGLBUFFERSUBDATAPROC ptrBufferSubData;
 PFNGLGETPROGRAMBINARYPROC ptrGetProgramBinary;
 PFNGLPROGRAMBINARYPROC ptrProgramBinary;
 PFNGLPROGRAMPARAMETERIPROC ptrProgramParameteri;
+PFNGLMAXSHADERCOMPILERTHREADSARBPROC ptrMaxShaderCompilerThreadsARB;
+PFNGLMAXSHADERCOMPILERTHREADSARBPROC ptrMaxShaderCompilerThreadsKHR;
 
 PFNGLTEXSTORAGE2DPROC ptrTexStorage2D;
 PFNGLTEXTURESTORAGE2DPROC ptrTextureStorage2D;
@@ -366,6 +379,8 @@ void initGLFunctions()
 	GL_GET_PROC_ADR(PFNGLGETPROGRAMBINARYPROC, GetProgramBinary);
 	GL_GET_PROC_ADR(PFNGLPROGRAMBINARYPROC, ProgramBinary);
 	GL_GET_PROC_ADR(PFNGLPROGRAMPARAMETERIPROC, ProgramParameteri);
+	GL_GET_PROC_ADR(PFNGLMAXSHADERCOMPILERTHREADSARBPROC, MaxShaderCompilerThreadsARB);
+	GL_GET_PROC_ADR(PFNGLMAXSHADERCOMPILERTHREADSARBPROC, MaxShaderCompilerThreadsKHR);
 
 	GL_GET_PROC_ADR(PFNGLTEXSTORAGE2DPROC, TexStorage2D);
 	GL_GET_PROC_ADR(PFNGLTEXTURESTORAGE2DPROC, TextureStorage2D);

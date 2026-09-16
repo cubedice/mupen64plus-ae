@@ -34,6 +34,7 @@ void _loadSettings(QSettings & settings)
 	config.video.fxaa= settings.value("fxaa", config.video.fxaa).toInt();
 	config.video.verticalSync = settings.value("verticalSync", config.video.verticalSync).toInt();
 	config.video.threadedVideo = settings.value("threadedVideo", config.video.threadedVideo).toInt();
+	config.video.asyncShaderCompilation = settings.value("asyncShaderCompilation", config.video.asyncShaderCompilation).toInt();
 	QString deviceName = QString::fromWCharArray(config.video.deviceName);
 	config.video.deviceName[settings.value("deviceName", deviceName).toString().toWCharArray(config.video.deviceName)] = L'\0';
 	settings.endGroup();
@@ -58,6 +59,7 @@ void _loadSettings(QSettings & settings)
 	config.generalEmulation.enableLegacyBlending = settings.value("enableLegacyBlending", config.generalEmulation.enableLegacyBlending).toInt();			 //ini only
 	config.generalEmulation.enableHybridFilter = settings.value("enableHybridFilter", config.generalEmulation.enableHybridFilter).toInt();					 //ini only
 	config.generalEmulation.enableFragmentDepthWrite = settings.value("enableFragmentDepthWrite", config.generalEmulation.enableFragmentDepthWrite).toInt(); //ini only
+	config.generalEmulation.hacks |= settings.value("hacks", config.generalEmulation.hacks).toInt();														 //ini only
 	config.generalEmulation.enableCustomSettings = settings.value("enableCustomSettings", config.generalEmulation.enableCustomSettings).toInt();
 	settings.endGroup();
 
@@ -103,6 +105,7 @@ void _loadSettings(QSettings & settings)
 	config.textureFilter.txHiresEnable = settings.value("txHiresEnable", config.textureFilter.txHiresEnable).toInt();
 	config.textureFilter.txHiresFullAlphaChannel = settings.value("txHiresFullAlphaChannel", config.textureFilter.txHiresFullAlphaChannel).toInt();
 	config.textureFilter.txHresAltCRC = settings.value("txHresAltCRC", config.textureFilter.txHresAltCRC).toInt();
+	config.textureFilter.txStrongCRC = settings.value("txStrongCRC", config.textureFilter.txStrongCRC).toInt();
 	config.textureFilter.txForce16bpp = settings.value("txForce16bpp", config.textureFilter.txForce16bpp).toInt();
 	config.textureFilter.txCacheCompression = settings.value("txCacheCompression", config.textureFilter.txCacheCompression).toInt();
 	config.textureFilter.txSaveCache = settings.value("txSaveCache", config.textureFilter.txSaveCache).toInt();
@@ -184,6 +187,7 @@ void _writeSettingsToFile(const QString & filename)
 	settings.setValue("fxaa", config.video.fxaa);
 	settings.setValue("verticalSync", config.video.verticalSync);
 	settings.setValue("threadedVideo", config.video.threadedVideo);
+	settings.setValue("asyncShaderCompilation", config.video.asyncShaderCompilation);
 	settings.setValue("deviceName", QString::fromWCharArray(config.video.deviceName));
 	settings.endGroup();
 
@@ -252,6 +256,7 @@ void _writeSettingsToFile(const QString & filename)
 	settings.setValue("txHiresEnable", config.textureFilter.txHiresEnable);
 	settings.setValue("txHiresFullAlphaChannel", config.textureFilter.txHiresFullAlphaChannel);
 	settings.setValue("txHresAltCRC", config.textureFilter.txHresAltCRC);
+	settings.setValue("txStrongCRC", config.textureFilter.txStrongCRC);
 	settings.setValue("txForce16bpp", config.textureFilter.txForce16bpp);
 	settings.setValue("txCacheCompression", config.textureFilter.txCacheCompression);
 	settings.setValue("txSaveCache", config.textureFilter.txSaveCache);
@@ -344,9 +349,20 @@ void _loadSettingsFromFile(const QString & filename)
 	}
 }
 
-void loadSettings(const QString & _strIniFolder)
+void loadSettings(const QString & _strIniFolder, const QString & _strSharedIniFolder)
 {
-	_loadSettingsFromFile(_strIniFolder + "/" + strIniFileName);
+	QString sharedSettingsFilename = _strSharedIniFolder + "/" + strIniFileName;
+	QString settingsFilename = _strIniFolder + "/" + strIniFileName;
+	QFile settingsFile(settingsFilename);
+	QFile sharedSettingsFile(sharedSettingsFilename);
+
+	// fallback to shared file if no config file exists
+	// in the config directory yet
+	if (sharedSettingsFile.exists() && !settingsFile.exists()) {
+		_loadSettingsFromFile(sharedSettingsFilename);
+	} else {
+		_loadSettingsFromFile(settingsFilename);
+	}
 }
 
 void writeSettings(const QString & _strIniFolder)
@@ -404,26 +420,38 @@ QString _getRomName(const char * _strRomName) {
 		QString::number(Adler32(0xFFFFFFFF, bytes.data(), bytes.length()), 16).toUpper();
 }
 
-void loadCustomRomSettings(const QString & _strIniFolder, const char * _strRomName)
+void loadCustomRomSettings(const QString & _strIniFolder, const QString & _strSharedIniFolder, const char * _strRomName)
 {
 	QSettings settings(_strIniFolder + "/" + strCustomSettingsFileName, QSettings::IniFormat);
+	QSettings sharedSettings(_strSharedIniFolder + "/" + strCustomSettingsFileName, QSettings::IniFormat);
 
 	const QString romName = _getRomName(_strRomName);
-	if (settings.childGroups().indexOf(romName) < 0)
+	if (settings.childGroups().indexOf(romName) < 0 &&
+		sharedSettings.childGroups().indexOf(romName) < 0) {
 		return;
+	}
 
-	settings.beginGroup(romName);
-	_loadSettings(settings);
-	settings.endGroup();
+	if (settings.childGroups().indexOf(romName) >= 0) {
+		// use user settings
+		settings.beginGroup(romName);
+		_loadSettings(settings);
+		settings.endGroup();
+	} else {
+		// use shared settings
+		sharedSettings.beginGroup(romName);
+		_loadSettings(sharedSettings);
+		sharedSettings.endGroup();
+	}
+
 	config.version = CONFIG_VERSION_CURRENT;
 }
 
-void saveCustomRomSettings(const QString & _strIniFolder, const char * _strRomName)
+void saveCustomRomSettings(const QString & _strIniFolder, const QString & _strSharedIniFolder, const char * _strRomName)
 {
 	Config origConfig;
 	origConfig.resetToDefaults();
 	std::swap(config, origConfig);
-	loadSettings(_strIniFolder);
+	loadSettings(_strIniFolder, _strSharedIniFolder);
 	std::swap(config, origConfig);
 
 	QSettings settings(_strIniFolder + "/" + strCustomSettingsFileName, QSettings::IniFormat);
@@ -527,6 +555,7 @@ void saveCustomRomSettings(const QString & _strIniFolder, const char * _strRomNa
 	WriteCustomSetting(textureFilter, txHiresEnable);
 	WriteCustomSetting(textureFilter, txHiresFullAlphaChannel);
 	WriteCustomSetting(textureFilter, txHresAltCRC);
+	WriteCustomSetting(textureFilter, txStrongCRC);
 	WriteCustomSetting(textureFilter, txForce16bpp);
 	WriteCustomSetting(textureFilter, txCacheCompression);
 	WriteCustomSetting(textureFilter, txSaveCache);
@@ -583,13 +612,13 @@ QString getCurrentProfile(const QString & _strIniFolder)
 	return settings.value("profile", strUserProfile).toString();
 }
 
-void changeProfile(const QString & _strIniFolder, const QString & _strProfile)
+void changeProfile(const QString & _strIniFolder, const QString & _strSharedIniFolder, const QString & _strProfile)
 {
 	{
 		QSettings settings(_strIniFolder + "/" + strIniFileName, QSettings::IniFormat);
 		settings.setValue("profile", _strProfile);
 	}
-	loadSettings(_strIniFolder);
+	loadSettings(_strIniFolder, _strSharedIniFolder);
 }
 
 void addProfile(const QString & _strIniFolder, const QString & _strProfile)
@@ -606,28 +635,3 @@ void removeProfile(const QString & _strIniFolder, const QString & _strProfile)
 	QSettings settings(_strIniFolder + "/" + strIniFileName, QSettings::IniFormat);
 	settings.remove(_strProfile);
 }
-
-#ifdef M64P_GLIDENUI
-#include <QFileInfo>
-
-bool isPathWriteable(const QString dir)
-{
-	QFileInfo path(dir);
-	return path.isWritable();
-}
-
-void copyConfigFiles(const QString _srcDir, const QString _targetDir)
-{
-	QStringList files = {
-		strIniFileName,
-		strDefaultIniFileName,
-		strCustomSettingsFileName
-	};
-
-	for (const QString& file : files) {
-		if (!QFile::exists(_targetDir + "/" + file)) {
-			QFile::copy(_srcDir + "/" + file, _targetDir + "/" + file);
-		}
-	}
-}
-#endif // M64P_GLIDENUI

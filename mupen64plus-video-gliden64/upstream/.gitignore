@@ -13,6 +13,7 @@ src/Revision.h
 /projects/msvc/GLideN64.VC.VC.opendb
 /projects/msvc/GLideN64.VC.db
 /projects/msvc/GeneratedFiles
+/projects/msvc/vcpkg_installed
 /projects/cmake/CMakeCache.txt
 /projects/cmake/CMakeFiles/
 /projects/cmake/GLideNHQ/
@@ -22,3 +23,4 @@ src/Revision.h
 /projects/cmake/mupen64plus-video-GLideN64_autogen/
 .vs
 /translations/wtl
+.DS_Store

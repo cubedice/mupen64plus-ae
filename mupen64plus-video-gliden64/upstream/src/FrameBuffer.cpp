@@ -50,7 +50,8 @@ FrameBuffer::~FrameBuffer()
 	gfxContext.deleteFramebuffer(m_depthFBO);
 	gfxContext.deleteFramebuffer(m_resolveFBO);
 	gfxContext.deleteFramebuffer(m_SubFBO);
-	gfxContext.deleteFramebuffer(m_copyFBO);
+	if (m_copyFBO != ObjectHandle::defaultFramebuffer)
+		gfxContext.deleteFramebuffer(m_copyFBO);
 
 	textureCache().removeFrameBufferTexture(m_pTexture);
 	textureCache().removeFrameBufferTexture(m_pDepthTexture);
@@ -918,6 +919,10 @@ void FrameBufferList::saveBuffer(u32 _address, u16 _format, u16 _size, u16 _widt
 		wnd.getDrawer().clearDepthBuffer();
 	}
 
+	if ((config.generalEmulation.hacks & hack_subscreen) != 0u &&
+		_format == G_IM_FMT_I && _size == G_IM_SIZ_8b)
+		gDP.m_subscreen = gDP.otherMode._u64 == 0x00000cf00f0a0004;
+
 	m_pCurrent->m_isDepthBuffer = _address == gDP.depthImageAddress;
 	m_pCurrent->m_isPauseScreen = m_pCurrent->m_isOBScreen = false;
 	m_pCurrent->m_copied = false;
@@ -1150,7 +1155,9 @@ bool FrameBufferList::RdpUpdate::update(RdpUpdateResult & _result)
 	const s32 x1 = _SHIFTR( *REG.VI_H_START, 16, 10 );
 	const s32 y1 = _SHIFTR( *REG.VI_V_START, 16, 10 );
 	const s32 x2 = _SHIFTR( *REG.VI_H_START, 0, 10 );
-	const s32 y2 = _SHIFTR( *REG.VI_V_START, 0, 10 );
+	s32 y2 = _SHIFTR( *REG.VI_V_START, 0, 10 );
+	if (y2 < y1)
+		y2 = ispal ? 44 + 576 : 34 + 480;
 
 	const s32 delta_x = x2 - x1;
 	const s32 delta_y = y2 - y1;

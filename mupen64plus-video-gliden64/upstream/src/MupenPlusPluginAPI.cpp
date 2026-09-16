@@ -32,13 +32,13 @@ EXPORT m64p_error CALL PluginStartup(
 	void (*DebugCallback)(void *, int, const char *)
 )
 {
-	return api().PluginStartup(CoreLibHandle);
+	return api().PluginStartup(CoreLibHandle, Context, DebugCallback);
 }
 
 #ifdef M64P_GLIDENUI
-EXPORT m64p_error CALL PluginConfig(void)
+EXPORT m64p_error CALL PluginConfig(void* parent)
 {
-	return api().PluginConfig();
+	return api().PluginConfig(parent);
 }
 #endif // M64P_GLIDENUI
 

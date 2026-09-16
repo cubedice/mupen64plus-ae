@@ -265,9 +265,8 @@ void gDPSetFillColor( u32 c )
 	DebugMsg( DEBUG_NORMAL, "gDPSetFillColor( 0x%08X );\n", c );
 }
 
-void gDPGetFillColor(f32 _fillColor[4])
+static void getFillColor(u32 c, f32 _fillColor[4])
 {
-	const u32 c = gDP.fillColor.color;
 	if (gDP.colorImage.size < 3) {
 		_fillColor[0] = _FIXED2FLOATCOLOR( _SHIFTR( c, 11, 5 ), 5 );
 		_fillColor[1] = _FIXED2FLOATCOLOR( _SHIFTR( c,  6, 5 ), 5 );
@@ -279,6 +278,12 @@ void gDPGetFillColor(f32 _fillColor[4])
 		_fillColor[2] = _FIXED2FLOATCOLOR( _SHIFTR( c,  8, 8 ), 8 );
 		_fillColor[3] = _FIXED2FLOATCOLOR( _SHIFTR( c,  0, 8 ), 8 );
 	}
+}
+
+void gDPGetFillColor(f32 _fillColor[4])
+{
+	const u32 c = gDP.fillColor.color;
+	return getFillColor(c, _fillColor);
 }
 
 void gDPSetPrimColor( u32 m, u32 l, u32 r, u32 g, u32 b, u32 a )
@@ -441,7 +446,7 @@ bool CheckForFrameBufferTexture(u32 _address, u32 _width, u32 _bytes)
 		break;
 	}
 
-	for (u32 nTile = gSP.texture.tile; nTile < 6; ++nTile) {
+	for (u32 nTile = 0; nTile < 6; ++nTile) {
 		if (gDP.tiles[nTile].tmem == gDP.loadTile->tmem) {
 			gDPTile & curTile = gDP.tiles[nTile];
 			curTile.textureMode = gDP.loadTile->textureMode;
@@ -489,8 +494,13 @@ void gDPLoadTile(u32 tile, u32 uls, u32 ult, u32 lrs, u32 lrt)
 	gDP.loadTile->loadType = LOADTYPE_TILE;
 	gDP.loadTile->imageAddress = gDP.textureImage.address;
 
-	if (gDP.loadTile->lrs < gDP.loadTile->uls || gDP.loadTile->lrt < gDP.loadTile->ult)
+	DebugMsg(DEBUG_NORMAL, "gDPLoadTile( %i, %i, %i, %i, %i );\n",
+		tile, gDP.loadTile->uls, gDP.loadTile->ult, gDP.loadTile->lrs, gDP.loadTile->lrt);
+
+	if (gDP.loadTile->lrs < gDP.loadTile->uls || gDP.loadTile->lrt < gDP.loadTile->ult) {
+		DebugMsg(DEBUG_ERROR, "gDPLoadTile is skipped because of wrong tile sizes.\n");
 		return;
+	}
 
 	const u32 width = (gDP.loadTile->lrs - gDP.loadTile->uls + 1) & 0x03FF;
 	const u32 height = (gDP.loadTile->lrt - gDP.loadTile->ult + 1) & 0x03FF;
@@ -529,8 +539,10 @@ void gDPLoadTile(u32 tile, u32 uls, u32 ult, u32 lrs, u32 lrt)
 		// 32 bit texture loaded into lower and upper half of TMEM, thus actual bytes doubled.
 		info.bytes *= 2;
 
-	if (gDP.loadTile->line == 0)
+	if (gDP.loadTile->line == 0) {
+		DebugMsg(DEBUG_ERROR, "gDPLoadTile is skipped because tile line is zero.\n");
 		return;
+	}
 
 	if (gDP.loadTile->masks == 0)
 		gDP.loadTile->loadWidth = max(gDP.loadTile->loadWidth, info.width);
@@ -553,13 +565,18 @@ void gDPLoadTile(u32 tile, u32 uls, u32 ult, u32 lrs, u32 lrt)
 	if (CheckForFrameBufferTexture(address, info.width, bpl2*height2))
 		return;
 
+	if (address >= RDRAMSize) {
+		DebugMsg(DEBUG_ERROR, "gDPLoadTile is skipped because load address is greater than RDRAM size.\n");
+		return;
+	}
+
 	if (gDP.loadTile->size == G_IM_SIZ_32b)
 		gDPLoadTile32b(gDP.loadTile->uls, gDP.loadTile->ult, gDP.loadTile->lrs, gDP.loadTile->lrt);
 	else {
 		u32 tmemAddr = gDP.loadTile->tmem;
 		const u32 line = gDP.loadTile->line;
 		const u32 qwpr = bpr >> 3;
-		for (u32 y = 0; y < height; ++y) {
+		for (u32 y = 0; y < height && address < RDRAMSize; ++y) {
 			if (address + bpl > RDRAMSize)
 				UnswapCopyWrap(RDRAM, address, reinterpret_cast<u8*>(TMEM), tmemAddr << 3, 0xFFF, RDRAMSize - address);
 			else
@@ -568,14 +585,9 @@ void gDPLoadTile(u32 tile, u32 uls, u32 ult, u32 lrs, u32 lrt)
 				DWordInterleaveWrap(reinterpret_cast<u32*>(TMEM), tmemAddr << 1, 0x3FF, qwpr);
 
 			address += gDP.textureImage.bpl;
-			if (address >= RDRAMSize)
-				break;
 			tmemAddr += line;
 		}
 	}
-
-	DebugMsg( DEBUG_NORMAL, "gDPLoadTile( %i, %i, %i, %i, %i );\n",
-			tile, gDP.loadTile->uls, gDP.loadTile->ult, gDP.loadTile->lrs, gDP.loadTile->lrt );
 }
 
 //****************************************************************
@@ -687,7 +699,7 @@ void gDPLoadBlock(u32 tile, u32 uls, u32 ult, u32 lrs, u32 dxt)
 	if (gDP.loadTile->size == G_IM_SIZ_32b)
 		gDPLoadBlock32(gDP.loadTile->uls, gDP.loadTile->lrs, dxt);
 	else if (gDP.loadTile->format == G_IM_FMT_YUV)
-		memcpy(TMEM, &RDRAM[address], bytes); // HACK!
+		memcpy(TMEM, &RDRAM[address], bytes & 0xFFF); // HACK!
 	else {
 		u32 tmemAddr = gDP.loadTile->tmem;
 		UnswapCopyWrap(RDRAM, address, reinterpret_cast<u8*>(TMEM), tmemAddr << 3, 0xFFF, bytes);
@@ -783,6 +795,106 @@ void gDPSetScissor(u32 mode, s16 xh, s16 yh, s16 xl, s16 yl)
 		gDP.scissor.lrx,
 		gDP.scissor.lry );
 #endif
+}
+
+// This performs the same thing action as gDPFillRectangle but explicitly specifying what to overwrite
+void gDPMemset(u32 value, u32 addr, u32 length)
+{
+	u32 uly = 0U, lry = 0U;
+	u32 fillColor = value;
+
+	auto calculateParams = [&](u32 imageAddr, u32 imageSize, u32 imageWidth)
+	{
+		if (imageSize == G_IM_SIZ_16b)
+			fillColor |= value << 16;
+		else if (imageSize == G_IM_SIZ_8b)
+			fillColor |= (value << 24) | (value << 16) | (value << 8);
+		getFillColor(fillColor, &gDP.rectColor.r);
+
+		// Deduce ulx, uly, lrx, lry from addr, size, and colorImageStart
+		// Currently I am assuming a simple letterbox case - top and bottom are not cleared
+		// ulx = 0;
+		// lrx = screenWidth;
+		const u32 lineSize = imageWidth << imageSize >> 1;
+		uly = (addr - imageAddr) / lineSize;
+		lry = uly + length / lineSize;
+	};
+
+	GraphicsDrawer& drawer = dwnd().getDrawer();
+
+	u32 imageWidth = VI.width;
+	u32 imageHeight = VI.height;
+	const u32 depthImageStart = gDP.depthImageAddress;
+	const u32 depthImageEnd = gDP.depthImageAddress + imageWidth * imageHeight * 2;
+	if (depthImageStart <= addr && addr < depthImageEnd) {
+		ValueKeeper<u32> backupColorImageSize(gDP.colorImage.size, G_IM_SIZ_16b);
+		calculateParams(gDP.depthImageAddress, G_IM_SIZ_16b, imageWidth);
+
+		// HACK: this usually replaces gDPSetColorImage for zb so save zb
+		const auto backupCurr = frameBufferList().getCurrent();
+		frameBufferList().saveBuffer(gDP.depthImageAddress, (u16)G_IM_FMT_RGBA, (u16)G_IM_SIZ_16b, (u16)imageWidth, false);
+
+		if (config.generalEmulation.enableFragmentDepthWrite == 0)
+			drawer.clearDepthBuffer();
+		else
+			depthBufferList().setCleared(true);
+
+		if (config.generalEmulation.enableFragmentDepthWrite != 0) {
+			// Pretend that we are drawing the rectangle over ZB with fill mode
+			ValueKeeper<u32> backupColorImageAddress(gDP.colorImage.address, gDP.depthImageAddress);
+			ValueKeeper<u32> backupWidth(gDP.colorImage.width, imageWidth);
+			gDPInfo::OtherMode otherMode = gDP.otherMode;
+			otherMode.cycleType = G_CYC_FILL;
+			ValueKeeper<gDPInfo::OtherMode> backupOtherMode(gDP.otherMode, otherMode);
+			drawer.drawRect(0, uly, imageWidth, lry);
+			frameBufferList().setBufferChanged(f32(lry));
+		}
+
+		if (backupCurr != nullptr) {
+			frameBufferList().setCurrent(backupCurr);
+			frameBufferList().attachDepthBuffer();
+		}
+	}
+	else if (0 == config.frameBufferEmulation.enable) {
+		// FB clear
+		// This heavily assume "niceness" of developers to bind color buffer before memset...
+		imageWidth = gDP.colorImage.width;
+		const u32 colorImageStart = gDP.colorImage.address;
+		const u32 colorImageEnd = gDP.colorImage.address + ((imageWidth * imageHeight) << gDP.colorImage.size >> 1);
+		if (colorImageStart <= addr && addr < colorImageEnd) {
+			calculateParams(gDP.colorImage.address, gDP.colorImage.size, imageWidth);
+			ValueKeeper<u32> backupFillColor(gDP.fillColor.color, fillColor);
+			gDPInfo::OtherMode otherMode = gDP.otherMode;
+			otherMode.cycleType = G_CYC_FILL;
+			ValueKeeper<gDPInfo::OtherMode> backupOtherMode(gDP.otherMode, otherMode);
+			drawer.drawRect(0, uly, imageWidth, lry);
+		}
+	}
+	else if (const auto pBuffer = frameBufferList().findBuffer(addr)) {
+		imageWidth = pBuffer->m_width;
+		calculateParams(pBuffer->m_startAddress, pBuffer->m_size, imageWidth);
+		{
+			ValueKeeper<u32> backupFillColor(gDP.fillColor.color, fillColor);
+			gDPInfo::OtherMode otherMode = gDP.otherMode;
+			otherMode.cycleType = G_CYC_FILL;
+			ValueKeeper<gDPInfo::OtherMode> backupOtherMode(gDP.otherMode, otherMode);
+			const auto backupCurr = frameBufferList().getCurrent();
+			frameBufferList().setCurrent(pBuffer);
+
+			drawer.drawRect(0, uly, imageWidth, lry);
+
+			pBuffer->setBufferClearParams(gDP.fillColor.color, 0, uly, imageWidth, lry);
+			frameBufferList().setBufferChanged(f32(lry));
+			frameBufferList().setCurrent(backupCurr);
+		}
+	}
+
+	// Memset
+	u32* pDest = reinterpret_cast<u32*>(RDRAM + addr);
+	u32 lengthInDwords = length >> 2;
+	for (u32 i = 0; i < lengthInDwords; i++) {
+		pDest[i] = fillColor;
+	}
 }
 
 void gDPFillRectangle( s32 ulx, s32 uly, s32 lrx, s32 lry )
@@ -907,16 +1019,16 @@ void gDPTextureRectangle(f32 ulx, f32 uly, f32 lrx, f32 lry, s32 tile, s16 s, s1
 	gDP.lastTexRectInfo.dsdx = !flip ? dsdx : dtdy;
 	gDP.lastTexRectInfo.dtdy = !flip ? dtdy : dsdx;
 
-	f32 S = _FIXED2FLOAT(!flip ? s : t, 5);
-	f32 T = _FIXED2FLOAT(!flip ? t : s, 5);
-	f32 DSDX = !flip ? dsdx : dtdy;
-	f32 DTDY = !flip ? dtdy : dsdx;
-	f32 uls = S + (ceilf(ulx) - ulx) * DSDX;
-	f32 lrs = S + (ceilf(lrx) - ulx - 1.0f) * DSDX;
-	f32 ult = T + (ceilf(uly) - uly) * DTDY;
-	f32 lrt = T + (ceilf(lry) - uly - 1.0f) * DTDY;
-
 	if (config.graphics2D.enableTexCoordBounds != 0) {
+		f32 S = _FIXED2FLOAT(!flip ? s : t, 5);
+		f32 T = _FIXED2FLOAT(!flip ? t : s, 5);
+		f32 DSDX = !flip ? dsdx : dtdy;
+		f32 DTDY = !flip ? dtdy : dsdx;
+		f32 uls = S + (ceilf(ulx) - ulx) * DSDX;
+		f32 lrs = S + (ceilf(lrx) - ulx - 1.0f) * DSDX;
+		f32 ult = T + (ceilf(uly) - uly) * DTDY;
+		f32 lrt = T + (ceilf(lry) - uly - 1.0f) * DTDY;
+
 		gDP.m_texCoordBounds.valid = true;
 		gDP.m_texCoordBounds.uls = fmin(uls, lrs);
 		gDP.m_texCoordBounds.ult = fmin(ult, lrt);
@@ -947,6 +1059,21 @@ void gDPTextureRectangle(f32 ulx, f32 uly, f32 lrx, f32 lry, s32 tile, s16 s, s1
 
 void gDPFullSync()
 {
+	enum
+	{
+		DPC_STATUS_XBUS_DMEM_DMA = 0x001,	// Bit  0: xbus_dmem_dma
+		DPC_STATUS_FREEZE = 0x002,			// Bit  1: Freeze
+		DPC_STATUS_FLUSH = 0x004,			// Bit  2: Flush
+		DPC_STATUS_START_GCLK = 0x008,		// Bit  3: Start GCLK
+		DPC_STATUS_TMEM_BUSY = 0x010,		// Bit  4: TMEM busy
+		DPC_STATUS_PIPE_BUSY = 0x020,		// Bit  5: Pipe busy
+		DPC_STATUS_CMD_BUSY = 0x040,		// Bit  6: CMD busy
+		DPC_STATUS_CBUF_READY = 0x080,		// Bit  7: CBUF ready
+		DPC_STATUS_DMA_BUSY = 0x100,		// Bit  8: DMA busy
+		DPC_STATUS_END_VALID = 0x200,		// Bit  9: End valid
+		DPC_STATUS_START_VALID = 0x400,		// Bit 10: Start valid
+	};
+
 	if (config.frameBufferEmulation.copyAuxToRDRAM != 0) {
 		frameBufferList().copyAux();
 		frameBufferList().removeAux();
@@ -972,8 +1099,13 @@ void gDPFullSync()
 			FrameBuffer_CopyDepthBuffer(gDP.colorImage.address);
 	}
 
-	*REG.MI_INTR |= MI_INTR_DP;
+	// Display list is finished. Check for combiner programs scheduled
+	// for asynchronous compilation and add ready ones to the combiners map,
+	// so they can be used in next display lists.
+	CombinerInfo::get().processPendingCombiners();
 
+	*REG.MI_INTR |= MI_INTR_DP;
+	*REG.DPC_STATUS &= ~(DPC_STATUS_PIPE_BUSY | DPC_STATUS_CMD_BUSY | DPC_STATUS_START_GCLK);
 	CheckInterrupts();
 
 	DebugMsg( DEBUG_NORMAL, "gDPFullSync();\n" );

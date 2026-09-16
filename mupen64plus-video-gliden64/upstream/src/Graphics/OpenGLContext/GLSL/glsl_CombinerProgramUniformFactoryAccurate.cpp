@@ -97,6 +97,7 @@ public:
 		LocateUniform(uEnableLod);
 		LocateUniform(uNoAtlasTex);
 		LocateUniform(uTextureDetail);
+		LocateUniform(uMaxAnisotropy);
 	}
 
 	void update(bool _force) override
@@ -116,6 +117,13 @@ public:
 							gDP.otherMode.textureLOD != G_TL_LOD ||
 							(gDP.otherMode.textureDetail != G_TD_DETAIL && maxTile == 1);
 		uNoAtlasTex.set(bNoAtlasTex ? 1 : 0, _force);
+
+		// Custom anisotropic filtering level for the in-shader mipmap sampling.
+		// This uniform group is used for LOD/mipmap programs (UTextureFetchMode is
+		// only added for non-LOD programs), so uMaxAnisotropy must be set here too.
+		const int maxAnisotropy = (config.texture.anisotropy > 1 && gDP.otherMode.textureFilter != 0)
+			? static_cast<int>(config.texture.anisotropy) : 1;
+		uMaxAnisotropy.set(maxAnisotropy, _force);
 	}
 
 private:
@@ -124,6 +132,7 @@ private:
 	iUniform uEnableLod;
 	iUniform uNoAtlasTex;
 	iUniform uTextureDetail;
+	iUniform uMaxAnisotropy;
 };
 
 class UTextureSize : public UniformGroup
@@ -316,7 +325,6 @@ public:
 
 			uTexWrap[t].set(aTexWrap[t][0], aTexWrap[t][1], _force);
 			uTexClamp[t].set(aTexClamp[t][0], aTexClamp[t][1], _force);
-			uTexWrapEn[t].set(aTexWrapEn[t][0], aTexWrapEn[t][1], _force);
 			uTexWrapEn[t].set(aTexWrapEn[t][0], aTexWrapEn[t][1], _force);
 			uTexClampEn[t].set(aTexClampEn[t][0], aTexClampEn[t][1], _force);
 			uTexMirrorEn[t].set(aTexMirrorEn[t][0], aTexMirrorEn[t][1], _force);

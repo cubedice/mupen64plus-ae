@@ -29,23 +29,9 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
-#define TXHMODULE HMODULE
-#define DLOPEN(a) LoadLibraryW(a)
-#define DLCLOSE(a) FreeLibrary(a)
-#define DLSYM(a, b) GetProcAddress(a, b)
-#define GETCWD(a, b) GetCurrentDirectoryW(a, b)
-#define CHDIR(a) SetCurrentDirectoryW(a)
 #else
 #include <iostream>
-#include <dlfcn.h>
-#include <unistd.h>
 #define MAX_PATH 4095
-#define TXHMODULE void*
-#define DLOPEN(a) dlopen(a, RTLD_LAZY|RTLD_GLOBAL)
-#define DLCLOSE(a) dlclose(a)
-#define DLSYM(a, b) dlsym(a, b)
-#define GETCWD(a, b) getcwd(b, a)
-#define CHDIR(a) chdir(a)
 #endif
 
 typedef unsigned char  uint8;
@@ -106,7 +92,7 @@ typedef unsigned char boolean;
 #define GZ_HIRESTEXCACHE    0x00800000
 #define DUMP_TEXCACHE       0x01000000
 #define DUMP_HIRESTEXCACHE  0x02000000
-#define UNDEFINED_0         0x04000000
+#define DUMP_STRONG_CRC     0x04000000
 #define UNDEFINED_1         0x08000000
 #define FORCE16BPP_HIRESTEX 0x10000000
 #define FORCE16BPP_TEX      0x20000000
@@ -239,8 +225,14 @@ txfilter_hirestex(uint64 g64crc, Checksum r_crc64, uint16 *palette, N64FormatSiz
 TAPI uint64 TAPIENTRY
 txfilter_checksum(uint8 *src, int width, int height, int size, int rowStride, uint8 *palette);
 
+TAPI uint64 TAPIENTRY
+txfilter_checksum_strong(uint8 *src, int width, int height, int size, int rowStride, uint8 *palette);
+
 TAPI boolean TAPIENTRY
 txfilter_dmptx(uint8 *src, int width, int height, int rowStridePixel, uint16 gfmt, N64FormatSize n64FmtSz, Checksum r_crc64);
+
+TAPI boolean TAPIENTRY
+txfilter_dmptx_strong(uint8 *src, int width, int height, int rowStridePixel, uint16 gfmt, N64FormatSize n64FmtSz, Checksum r_crc64);
 
 TAPI boolean TAPIENTRY
 txfilter_reloadhirestex();

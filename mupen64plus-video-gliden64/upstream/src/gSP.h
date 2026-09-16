@@ -72,16 +72,18 @@ struct gSPInfo
 		f32 i_xyz[12][3];
 		f32 pos_xyzw[12][4];
 		f32 ca[12], la[12], qa[12];
+		bool is_point[12];
+		u8 specularSize[12];
+		bool hasPointLight;
 	} lights;
 
 	struct
 	{
-		f32 rgb[2][3];
 		f32 xyz[2][3];
 		f32 i_xyz[2][3];
-		f32 pos_xyzw[2][4];
-		f32 ca[2], la[2], qa[2];
 	} lookat;
+
+	f32 camWorldPos[3];
 
 	u32 numLights;
 	bool lookatEnable;
@@ -143,6 +145,31 @@ struct gSPInfo
 		bool advancedLighting;
 	} cbfd;
 
+	struct
+	{
+		f32 amb;
+		f32 dir;
+		f32 point;
+	} ao;
+
+	struct
+	{
+		f32 scale;
+		f32 offset;
+	} fresnel;
+
+	struct
+	{
+		f32 s;
+		f32 t;
+	} attrOffset;
+
+	struct
+	{
+		s8 mode;
+		u8 thresh;
+	} alphaCompareCull;
+
 	u32 textureCoordScaleOrg;
 	u32 textureCoordScale[2];
 };
@@ -158,6 +185,7 @@ void gSPForceMatrix( u32 mptr );
 void gSPLight( u32 l, s32 n );
 void gSPLightCBFD( u32 l, s32 n );
 void gSPLookAt( u32 l, u32 n );
+void gSPCameraWorld( u32 l );
 void gSPLightAcclaim(u32 l, s32 n);
 void gSPVertex( u32 v, u32 n, u32 v0 );
 void gSPCIVertex( u32 v, u32 n, u32 v0 );
@@ -179,6 +207,7 @@ void gSPCullDisplayList( u32 v0, u32 vn );
 void gSPPopMatrix( u32 param );
 void gSPPopMatrixN( u32 param, u32 num );
 void gSPSegment( s32 seg, s32 base );
+void gSPRelSegment(s32 seg, s32 base);
 void gSPClipRatio( u32 ratio );
 void gSPInsertMatrix( u32 where, u32 num );
 void gSPModifyVertex(u32 _vtx, u32 _where, u32 _val );
@@ -186,6 +215,14 @@ void gSPNumLights( s32 n );
 void gSPLightColor( u32 lightNum, u32 packedColor );
 void gSPFogFactor( s16 fm, s16 fo );
 void gSPPerspNormalize( u16 scale );
+void gsSPAOAmbient( u16 amb );
+void gsSPAODirectional( u16 dir );
+void gsSPAOPoint( u16 point );
+void gsSPFresnelScale( s16 scale );
+void gsSPFresnelOffset( s16 offset );
+void gsSPAttrOffsetS( u16 offset );
+void gsSPAttrOffsetT( u16 offset );
+void gsSPAlphaCompareCull(u16 cfg);
 void gSPTexture( f32 sc, f32 tc, u32 level, u32 tile, u32 on );
 void gSPEndDisplayList();
 void gSPGeometryMode( u32 clear, u32 set );
@@ -193,8 +230,7 @@ void gSPSetGeometryMode( u32 mode );
 void gSPClearGeometryMode( u32 mode );
 void gSPSetOtherMode_H(u32 _length, u32 _shift, u32 _data);
 void gSPSetOtherMode_L(u32 _length, u32 _shift, u32 _data);
-void gSPLine3D(u32 v0, u32 v1, u32 flag);
-void gSPLineW3D( u32 v0, u32 v1, u32 wd, u32 flag );
+void gSPLine3D( u32 v0, u32 v1, s32 wd, u32 flag );
 void gSPSetStatus(u32 sid, u32 val);
 void gSPSetDMAOffsets( u32 mtxoffset, u32 vtxoffset );
 void gSPSetDMATexOffset(u32 _addr);

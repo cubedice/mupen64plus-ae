@@ -5,7 +5,6 @@
 #include <Graphics/Context.h>
 
 #include <Textures.h>
-#include <NoiseTexture.h>
 #include <FrameBuffer.h>
 #include <DisplayWindow.h>
 #include <RSP.h>
@@ -15,20 +14,21 @@ namespace {
 using namespace glsl;
 /*---------------UniformGroup-------------*/
 
-class UNoiseTex : public UniformGroup
+class UNoiseSeed : public UniformGroup
 {
 public:
-	UNoiseTex(GLuint _program) {
-		LocateUniform(uTexNoise);
+	UNoiseSeed(GLuint _program) {
+		LocateUniform(uNoiseSeed);
 	}
 
 	void update(bool _force) override
 	{
-		uTexNoise.set(int(graphics::textureIndices::NoiseTex), _force);
+		u32 counter = dwnd().getBuffersSwapCount();
+		uNoiseSeed.set(static_cast<f32>(counter & 0xff), _force);
 	}
 
 private:
-	iUniform uTexNoise;
+	fUniform uNoiseSeed;
 };
 
 class UDepthTex : public UniformGroup
@@ -323,8 +323,7 @@ private:
 class UDitherMode : public UniformGroup
 {
 public:
-	UDitherMode(GLuint _program, bool _usesNoise)
-	: m_usesNoise(_usesNoise)
+	UDitherMode(GLuint _program)
 	{
 		LocateUniform(uAlphaCompareMode);
 		LocateUniform(uAlphaDitherMode);
@@ -343,18 +342,12 @@ public:
 			uAlphaDitherMode.set(0, _force);
 			uColorDitherMode.set(0, _force);
 		}
-
-		bool updateNoiseTex = m_usesNoise;
-		updateNoiseTex |= (gDP.otherMode.cycleType < G_CYC_COPY) && (gDP.otherMode.colorDither == G_CD_NOISE || gDP.otherMode.alphaDither == G_AD_NOISE || gDP.otherMode.alphaCompare == G_AC_DITHER);
-		if (updateNoiseTex)
-			g_noiseTexture.update();
 	}
 
 private:
 	iUniform uAlphaCompareMode;
 	iUniform uAlphaDitherMode;
 	iUniform uColorDitherMode;
-	bool m_usesNoise;
 };
 
 class UScreenScale : public UniformGroup
@@ -407,6 +400,7 @@ public:
 		LocateUniform(uTextureFormat);
 		LocateUniform(uTextureConvert);
 		LocateUniform(uConvertParams);
+		LocateUniform(uMaxAnisotropy);
 	}
 
 	void update(bool _force) override
@@ -417,6 +411,15 @@ public:
 		uTextureConvert.set(gDP.otherMode.convert_one, _force);
 		if (gDP.otherMode.bi_lerp0 == 0 || gDP.otherMode.bi_lerp1 == 0)
 			uConvertParams.set(gDP.convert.k0, gDP.convert.k1, gDP.convert.k2, gDP.convert.k3, _force);
+		// Custom anisotropic filtering level for the in-shader bilinear/3-point
+		// filter. texelFetch/texture() based custom filtering bypasses the sampler's
+		// GL_TEXTURE_MAX_ANISOTROPY_EXT, so the shader emulates AF by supersampling.
+		// Enabled whenever AF is requested and texture filtering is on; axis-aligned
+		// (e.g. rectangle) draws collapse to a single tap via the in-shader footprint
+		// ratio, so no draw-state gating is needed here.
+		const int maxAnisotropy = (config.texture.anisotropy > 1 && textureFilter != 0)
+			? static_cast<int>(config.texture.anisotropy) : 1;
+		uMaxAnisotropy.set(maxAnisotropy, _force);
 	}
 
 private:
@@ -424,6 +427,7 @@ private:
 	iv2Uniform uTextureFormat;
 	iUniform uTextureConvert;
 	i4Uniform uConvertParams;
+	iUniform uMaxAnisotropy;
 };
 
 class UAlphaTestInfo : public UniformGroup
@@ -754,15 +758,17 @@ public:
 
 	void update(bool _force) override
 	{
-		for (u32 i = 0; i <= gSP.numLights; ++i) {
+		const u32 numLights = std::min(gSP.numLights, _numLights);
+		for (u32 i = 0; i <= numLights; ++i) {
 			uLightDirection[i].set(gSP.lights.xyz[i], _force);
 			uLightColor[i].set(gSP.lights.rgb[i], _force);
 		}
 	}
 
 private:
-	fv3Uniform uLightDirection[8];
-	fv3Uniform uLightColor[8];
+	static constexpr u32 _numLights = 8;
+	fv3Uniform uLightDirection[_numLights];
+	fv3Uniform uLightColor[_numLights];
 };
 
 } //nameless namespace
@@ -770,9 +776,9 @@ private:
 /*---------------CombinerProgramUniformFactoryCommon-------------*/
 namespace glsl {
 
-void CombinerProgramUniformFactoryCommon::_addNoiseTex(GLuint _program, UniformGroups &_uniforms) const
+void CombinerProgramUniformFactoryCommon::_addNoiseSeed(GLuint _program, UniformGroups &_uniforms) const
 {
-	_uniforms.emplace_back(new UNoiseTex(_program));
+	_uniforms.emplace_back(new UNoiseSeed(_program));
 }
 
 void CombinerProgramUniformFactoryCommon::_addScreenSpaceTriangleInfo(GLuint _program, UniformGroups &_uniforms) const
@@ -845,9 +851,9 @@ void CombinerProgramUniformFactoryCommon::_addBlendCvg(GLuint _program, UniformG
 	_uniforms.emplace_back(new UBlendCvg(_program));
 }
 
-void CombinerProgramUniformFactoryCommon::_addDitherMode(GLuint _program, UniformGroups &_uniforms, bool _usesNoise) const
+void CombinerProgramUniformFactoryCommon::_addDitherMode(GLuint _program, UniformGroups &_uniforms) const
 {
-	_uniforms.emplace_back(new UDitherMode(_program, _usesNoise));
+	_uniforms.emplace_back(new UDitherMode(_program));
 }
 
 void CombinerProgramUniformFactoryCommon::_addScreenScale(GLuint _program, UniformGroups &_uniforms) const

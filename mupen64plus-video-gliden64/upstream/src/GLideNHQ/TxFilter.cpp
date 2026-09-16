@@ -149,7 +149,7 @@ TxFilter::TxFilter(int maxwidth,
 		wchar_t fullTexPackPath[MAX_PATH];
 		wcscpy(fullTexPackPath, texPackPath);
 		wcscat(fullTexPackPath, OSAL_DIR_SEPARATOR_STR);
-		wcscat(fullTexPackPath, ident);
+		wcscat(fullTexPackPath, _ident.c_str());
 		_txHiResLoader = new TxHiResNoCache(_maxwidth, _maxheight, _maxbpp, _options, texCachePath, texPackPath, fullTexPackPath, _ident.c_str(), callback);
 	} else {
 		_txHiResLoader = new TxHiResCache(_maxwidth, _maxheight, _maxbpp, _options, texCachePath, texPackPath, _ident.c_str(), callback);
@@ -580,8 +580,18 @@ TxFilter::checksum64(uint8 *src, int width, int height, int size, int rowStride,
 	return 0;
 }
 
+uint64
+TxFilter::checksum64strong(uint8 *src, int width, int height, int size, int rowStride, uint8 *palette)
+{
+	if (_options & (HIRESTEXTURES_MASK | DUMP_TEX))
+		return TxUtil::checksum64strong(src, width, height, size, rowStride, palette);
+
+	return 0;
+}
+
 boolean
-TxFilter::dmptx(uint8 *src, int width, int height, int rowStridePixel, ColorFormat gfmt, N64FormatSize n64FmtSz, Checksum r_crc64)
+TxFilter::dmptx(uint8 *src, int width, int height, int rowStridePixel,
+				ColorFormat gfmt, N64FormatSize n64FmtSz, Checksum r_crc64, boolean isStrongCrc)
 {
 	assert(gfmt != graphics::colorFormat::RGBA);
 	if (!_initialized)
@@ -609,11 +619,11 @@ TxFilter::dmptx(uint8 *src, int width, int height, int rowStridePixel, ColorForm
 		tmpbuf.assign(_dumpPath);
 		tmpbuf.append(wst("/"));
 		tmpbuf.append(_ident);
-		tmpbuf.append(wst("/GLideNHQ"));
+		isStrongCrc ? tmpbuf.append(wst("/GLideNHQ_strong_crc")) : tmpbuf.append(wst("/GLideNHQ"));
 		if (!osal_path_existsW(tmpbuf.c_str()) && osal_mkdirp(tmpbuf.c_str()) != 0)
 			return 0;
 
-		if (n64FmtSz._format == 0x2) {
+		if ((n64FmtSz._format == 0x0 && n64FmtSz._size == 0x0) || n64FmtSz._format == 0x2) {
 			wchar_t wbuf[256];
 			tx_swprintf(wbuf, 256, wst("/%ls#%08X#%01X#%01X#%08X_ciByRGBA.png"), _ident.c_str(), r_crc64._texture, n64FmtSz._format, n64FmtSz._size, r_crc64._palette);
 			tmpbuf.append(wbuf);

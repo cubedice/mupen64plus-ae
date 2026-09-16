@@ -116,11 +116,19 @@ bool DisplayWindowMupen64plus::_start()
 	}
 
 	char caption[128];
+#ifdef PLUGIN_REVISION
 # ifdef _DEBUG
 	sprintf(caption, "%s debug. Revision %s", pluginName, PLUGIN_REVISION);
 # else // _DEBUG
 	sprintf(caption, "%s. Revision %s", pluginName, PLUGIN_REVISION);
 # endif // _DEBUG
+#else // PLUGIN_REVISION
+# ifdef _DEBUG
+	sprintf(caption, "%s debug", pluginName);
+# else // _DEBUG
+	sprintf(caption, "%s", pluginName);
+# endif // _DEBUG
+#endif // PLUGIN_REVISION
 	CoreVideo_SetCaption(caption);
 
 	return true;
@@ -134,13 +142,8 @@ void DisplayWindowMupen64plus::_stop()
 void DisplayWindowMupen64plus::_restart()
 {
 #ifdef M64P_GLIDENUI
-	if (_supportsWithRateFunctions && m_bFullscreen) {
-		m_resizeWidth = config.video.fullscreenWidth;
-		m_resizeHeight = config.video.fullscreenHeight;
-	} else {
-		m_resizeWidth = config.video.windowedWidth;
-		m_resizeHeight = config.video.windowedHeight;
-	}
+	m_resizeWidth = 0;
+	m_resizeHeight = 0;
 #endif // M64P_GLIDENUI
 }
 
@@ -173,54 +176,17 @@ void DisplayWindowMupen64plus::_saveBufferContent(graphics::ObjectHandle /*_fbo*
 
 bool DisplayWindowMupen64plus::_resizeWindow()
 {
-	_setAttributes();
-
-#ifndef M64P_GLIDENUI
-	m_bFullscreen = false;
-#endif // M64P_GLIDENUI
-
 #ifdef M64P_GLIDENUI
-	m64p_error returnValue;
-
-	if (!_supportsWithRateFunctions)
-		m_bFullscreen = false;
-
-	if (_supportsWithRateFunctions) {
-		m64p_video_flags flags = {};
-
-		m_width = m_screenWidth = m_resizeWidth;
-		m_height = m_screenHeight = m_resizeHeight;
-
-		returnValue = FunctionWrapper::CoreVideo_SetVideoModeWithRate(m_screenWidth, m_screenHeight, m_screenRefresh, 0, m_bFullscreen ? M64VIDEO_FULLSCREEN : M64VIDEO_WINDOWED, flags);
-		if (returnValue != M64ERR_SUCCESS) {
-			LOG(LOG_ERROR, "Error setting videomode %dx%d @ %d. Error code: %d", m_screenWidth, m_screenHeight, m_screenRefresh, returnValue);
-			FunctionWrapper::CoreVideo_Quit();
-			return false;
-		}
-
-		_setBufferSize();
-		opengl::Utils::isGLError(); // reset GL error.
+	if (m_resizeWidth == 0 && m_resizeHeight == 0) {
 		return true;
 	}
 #endif // M64P_GLIDENUI
 
+	_setAttributes();
+
 	m_width = m_screenWidth = m_resizeWidth;
 	m_height = m_screenHeight = m_resizeHeight;
-	switch (CoreVideo_ResizeWindow(m_screenWidth, m_screenHeight)) {
-		case M64ERR_INVALID_STATE:
-			LOG(LOG_ERROR, "Error setting videomode %dx%d in fullscreen mode", m_screenWidth, m_screenHeight);
-			m_width = m_screenWidth = config.video.windowedWidth;
-			m_height = m_screenHeight = config.video.windowedHeight;
-			break;
-		case M64ERR_SUCCESS:
-			break;
-		default:
-			LOG(LOG_ERROR, "Error setting videomode %dx%d", m_screenWidth, m_screenHeight);
-			m_width = m_screenWidth = config.video.windowedWidth;
-			m_height = m_screenHeight = config.video.windowedHeight;
-			FunctionWrapper::CoreVideo_Quit();
-			return false;
-	}
+
 	_setBufferSize();
 	opengl::Utils::isGLError(); // reset GL error.
 	return true;
@@ -286,23 +252,33 @@ void DisplayWindowMupen64plus::_readScreen2(void * _dest, int * _width, int * _h
 	if (_dest == nullptr)
 		return;
 
-	u8 *pBufferData = (u8*)malloc((*_width)*(*_height) * 4);
-	if (pBufferData == nullptr)
-		return;
-	u8 *pDest = (u8*)_dest;
+	// GL_PACK_ALIGNMENT defaults to 4, so with the 3 byte format below the
+	// driver pads every row up to a 4 byte boundary and writes past the
+	// width*height*3 buffer whenever width*3 is not a multiple of 4. _dest is
+	// owned by the emulator core, so the overrun lands in its memory.
+	glPixelStorei(GL_PACK_ALIGNMENT, 1);
 
 #if !defined(OS_ANDROID) && !defined(OS_IOS)
 	GLint oldMode;
 	glGetIntegerv(GL_READ_BUFFER, &oldMode);
+	gfxContext.bindFramebuffer(graphics::bufferTarget::READ_FRAMEBUFFER, graphics::ObjectHandle::defaultFramebuffer);
 	if (_front != 0)
 		glReadBuffer(GL_FRONT);
 	else
 		glReadBuffer(GL_BACK);
-	glReadPixels(0, m_heightOffset, m_screenWidth, m_screenHeight, GL_RGBA, GL_UNSIGNED_BYTE, pBufferData);
+	glReadPixels(0, m_heightOffset, m_screenWidth, m_screenHeight, GL_RGB, GL_UNSIGNED_BYTE, _dest);
+	if (graphics::BufferAttachmentParam(oldMode) == graphics::bufferAttachment::COLOR_ATTACHMENT0) {
+		FrameBuffer * pBuffer = frameBufferList().getCurrent();
+		if (pBuffer != nullptr)
+			gfxContext.bindFramebuffer(graphics::bufferTarget::READ_FRAMEBUFFER, pBuffer->m_FBO);
+	}
 	glReadBuffer(oldMode);
 #else
+	u8 *pBufferData = (u8*)malloc((*_width)*(*_height) * 4);
+	if (pBufferData == nullptr)
+		return;
+	u8 *pDest = (u8*)_dest;
 	glReadPixels(0, m_heightOffset, m_screenWidth, m_screenHeight, GL_RGBA, GL_UNSIGNED_BYTE, pBufferData);
-#endif
 
 	//Convert RGBA to RGB
 	for (s32 y = 0; y < *_height; ++y) {
@@ -317,6 +293,7 @@ void DisplayWindowMupen64plus::_readScreen2(void * _dest, int * _width, int * _h
 	}
 
 	free(pBufferData);
+#endif
 }
 
 graphics::ObjectHandle DisplayWindowMupen64plus::_getDefaultFramebuffer()

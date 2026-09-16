@@ -35,7 +35,9 @@
 #define F5Indi_Naboo	26
 #define S2DEX_1_03		27
 #define S2DEX_1_05		28
-#define NONE			29
+#define F3DEX3			29
+#define F3DEX095		30
+#define NONE			31
 
 // Fixed point conversion factors
 #define FIXED2FLOATRECIP1	0.5f
@@ -82,6 +84,14 @@
 #define G_TEXTURE_GEN_LINEAR	0x00080000
 #define G_LOD					0x00100000
 #define G_POINT_LIGHTING		0x00400000
+
+// Note that when F3DEX3 is enabled, AMBOCCLUSION or ATTROFFSET_ST will intersect with ACCLAIM lighting.
+// Condition to check for ACCLAIM then is ensuring that both AMBOCCLUSION and ATTROFFSET_ST are equal to 0.
+#define F3DEX3_G_PACKED_NORMALS        0x00000800
+#define F3DEX3_G_LIGHTTOALPHA          0x00001000
+#define F3DEX3_G_LIGHTING_SPECULAR     0x00002000
+#define F3DEX3_G_FRESNEL_COLOR         0x00004000
+#define F3DEX3_G_FRESNEL_ALPHA         0x00008000
 
 #define G_MV_MMTX		2
 #define G_MV_PMTX		6
@@ -189,6 +199,9 @@ extern u32 G_CULL_FRONT;
 extern u32 G_CULL_BACK;
 extern u32 G_CULL_BOTH;
 extern u32 G_CLIPPING;
+
+extern u32 G_ATTROFFSET_ST_ENABLE;
+extern u32 G_AMBOCCLUSION;
 
 extern u32 G_MV_VIEWPORT;
 
@@ -401,6 +414,7 @@ extern u32 G_OBJ_LOADTXTR, G_OBJ_LDTX_SPRITE, G_OBJ_LDTX_RECT, G_OBJ_LDTX_RECT_R
 extern u32 G_RDPHALF_0;
 extern u32 G_PERSPNORM;
 extern u32 G_ZOBJ, G_ZRDPCMD, G_ZWAITSIGNAL, G_ZMTXCAT, G_ZMULT_MPMTX, G_ZLIGHTING;
+extern u32 G_TRISTRIP, G_TRIFAN, G_LIGHTTORDP, G_RELSEGMENT;
 
 #define LIGHT_1	1
 #define LIGHT_2	2
@@ -468,7 +482,7 @@ typedef struct
 
 struct Light
 {
-	u8 pad0, b, g, r;
+	u8 type, b, g, r;
 	u8 pad1, b2, g2, r2;
 	s8 pad2, z, y, x;
 };
@@ -489,6 +503,14 @@ struct MicrocodeInfo
 	bool fast3DPersp = false;
 	bool texturePersp = true;
 	bool combineMatrices = false;
+	struct
+	{
+		// LVP is how microcodes other than F3DEX3 function
+		bool legacyVertexPipeline = true;
+		bool noOcclusionPlane = false;
+		bool branchOnZ = false;
+		u8 version = 0;
+	} f3dex3;
 };
 
 struct GBIInfo
@@ -509,6 +531,10 @@ struct GBIInfo
 	bool isNegativeY() const { return m_pCurrent != nullptr ? m_pCurrent->negativeY : true; }
 	bool isTexturePersp() const { return m_pCurrent != nullptr ? m_pCurrent->texturePersp: true; }
 	bool isCombineMatrices() const { return m_pCurrent != nullptr ? m_pCurrent->combineMatrices: false; }
+	bool isLegacyVertexPipeline() const { return m_pCurrent != nullptr ? m_pCurrent->f3dex3.legacyVertexPipeline : true; }
+	bool isNoOcclusionPlane() const { return m_pCurrent != nullptr ? m_pCurrent->f3dex3.noOcclusionPlane : false; }
+	bool isBranchOnZ() const { return m_pCurrent != nullptr ? m_pCurrent->f3dex3.branchOnZ : false; }
+	u8 f3dex3Version() const { return m_pCurrent != nullptr ? m_pCurrent->f3dex3.version : 0; }
 
 private:
 	void _flushCommands();
@@ -545,6 +571,8 @@ extern GBIInfo GBI;
 	G_CULL_BACK			= ucode##_CULL_BACK; \
 	G_CULL_BOTH			= ucode##_CULL_BOTH; \
 	G_CLIPPING			= ucode##_CLIPPING; \
+	G_ATTROFFSET_ST_ENABLE = 0; \
+	G_AMBOCCLUSION		= 0; \
 \
 	G_MV_VIEWPORT		= ucode##_MV_VIEWPORT; \
 \
