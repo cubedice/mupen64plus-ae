@@ -4,9 +4,9 @@
 ; git-subrepo command. See https://github.com/git-commands/git-subrepo#readme
 ;
 [subrepo]
-	remote = https://github.com/fzurita/GLideN64.git
+	remote = https://github.com/gonetz/GLideN64.git
 	branch = master
 	commit = 41c7ba273a6c9afb43c0574cf3cf5d139182d070
-	parent = 33bf7021549d7873e976884370fbd1a8e7333bc7
+	parent = bd456d4892301858617dc7ecec2edb419a8b6d0a
 	method = merge
 	cmdver = 0.4.9
