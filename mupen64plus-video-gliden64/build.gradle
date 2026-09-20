@@ -36,6 +36,7 @@ android {
             cmake {
                 arguments "-DANDROID=1", "-DMUPENPLUSAPI=1", "-DCMAKE_BUILD_TYPE=Release", "-DUNIX=1",
                     "-DANDROID_LIB_PATH=$projectDir/../ndkLibs",
+                    "-DCMAKE_PROJECT_GLideN64_INCLUDE=$projectDir/android-dependencies.cmake",
                     "-DANDROID_ARM_NEON=TRUE", "-DANDROID_TOOLCHAIN=clang"
                 cppFlags "-fexceptions", "-ffast-math", "-ftree-vectorize", "-O3", "-g", "-fno-omit-frame-pointer"
                 cFlags "-ffast-math", "-ftree-vectorize", "-O3", "-g", "-fno-omit-frame-pointer"

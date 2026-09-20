@@ -1,0 +1,18 @@
+cmake_minimum_required(VERSION 3.22)
+project(gliden64_cache_test LANGUAGES C CXX)
+enable_testing()
+set(ZSTD_BUILD_PROGRAMS OFF CACHE BOOL "" FORCE)
+set(ZSTD_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(ZSTD_BUILD_SHARED OFF CACHE BOOL "" FORCE)
+set(ZSTD_BUILD_STATIC ON CACHE BOOL "" FORCE)
+set(ZSTD_LEGACY_SUPPORT OFF CACHE BOOL "" FORCE)
+add_subdirectory("../../ndkLibs/zstd/upstream/build/cmake" "zstd")
+find_library(SYSTEM_ZLIB NAMES z libz.so.1 REQUIRED)
+set(NHQ "${CMAKE_CURRENT_SOURCE_DIR}/../upstream/src/GLideNHQ")
+add_executable(cache_roundtrip cache_roundtrip.cpp
+    "${NHQ}/zstd/zstd_zlibwrapper.c" "${NHQ}/zstd/gzclose.c"
+    "${NHQ}/zstd/gzlib.c" "${NHQ}/zstd/gzread.c" "${NHQ}/zstd/gzwrite.c")
+target_include_directories(cache_roundtrip PRIVATE "${NHQ}" "${NHQ}/inc")
+target_compile_definitions(cache_roundtrip PRIVATE ZWRAP_USE_ZSTD=1)
+target_link_libraries(cache_roundtrip PRIVATE libzstd_static "${SYSTEM_ZLIB}")
+add_test(NAME cache_roundtrip COMMAND cache_roundtrip)

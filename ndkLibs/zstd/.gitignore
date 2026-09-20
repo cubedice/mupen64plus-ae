@@ -1,0 +1,3 @@
+# These are vendored CMake sources, not generated build output.
+!upstream/build/
+!upstream/build/**
