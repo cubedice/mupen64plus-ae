@@ -57,6 +57,10 @@
     <Preference
         android:key="addShader"
         android:title="@string/preferenceAdd_title"/>
+    <Preference
+        android:key="slangPresetFolder"
+        android:title="@string/shadersSlangFolder_title"
+        android:summary="@string/shadersSlangFolder_summary"/>
 
     <androidx.preference.PreferenceCategory
         android:key="categoryShaderPasses"

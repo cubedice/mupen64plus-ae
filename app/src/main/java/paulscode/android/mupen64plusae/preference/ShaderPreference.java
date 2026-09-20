@@ -50,6 +50,11 @@ public class ShaderPreference extends ListPreference implements OnPreferenceDial
     }
 
     private OnRemove mOnRemoveCallback = null;
+    public interface OnSelect {
+        boolean onSelect(String key, String value);
+    }
+    private OnSelect mOnSelectCallback;
+    public void setOnSelectCallback(OnSelect callback) { mOnSelectCallback = callback; }
     public ShaderPreference(Context context )
     {
         super( context );
@@ -70,7 +75,8 @@ public class ShaderPreference extends ListPreference implements OnPreferenceDial
         builder.setTitle(getTitle());
         builder.setPositiveButton(null, null);
         builder.setSingleChoiceItems(adapter, currentIndex, (dialog, item) -> {
-            setValue(getEntryValues()[item].toString());
+            String value = getEntryValues()[item].toString();
+            if (mOnSelectCallback == null || !mOnSelectCallback.onSelect(getKey(), value)) setValue(value);
             dialog.dismiss();
         });
         builder.setNeutralButton( R.string.preferenceRemove_title, (dialog, which) -> {

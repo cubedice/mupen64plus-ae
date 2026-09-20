@@ -26,14 +26,18 @@ public enum ShaderLoader {
             "scalefx-pass2",
             "scalefx-pass3",
             "scalefx-pass4"
-    );
+    ),
+    CRT_GUEST_ADVANCED_NTSC(R.string.shadersCrtGuestAdvanced_title, R.string.shadersCrtGuestAdvanced_summary, false, "crt-guest-advanced-ntsc"),
+    SHADERLAY_CRT(R.string.shadersSlangCrt_title, R.string.shadersSlang_summary, false, "slang/crt.slangp"),
+    SHADERLAY_SCANLINES(R.string.shadersSlangScanlines_title, R.string.shadersSlang_summary, false, "slang/scanlines.slangp"),
+    SHADERLAY_LCD(R.string.shadersSlangLcd_title, R.string.shadersSlang_summary, false, "slang/lcd-grid.slangp"),
+    CUSTOM_SLANG(R.string.shadersSlangCustom_title, R.string.shadersSlangCustom_summary, false, "custom.slangp");
 
     private final ArrayList<String> mShaderNames = new ArrayList<>();
     private final int mFriendlyName;
     private final int mDescription;
     private final boolean mNeedsVsync;
     private final ArrayList<String> mShaderCode = new ArrayList<>();
-
     static final String TAG = "ShaderLoader";
 
     ShaderLoader(int friendlyName, int description, boolean needsVsync, String ... shaderNameList ) {
@@ -74,9 +78,11 @@ public enum ShaderLoader {
         return false;
     }
 
-    public static void loadShaders(Context context){
+    public static synchronized void loadShaders(Context context){
 
         for (ShaderLoader shader : ShaderLoader.values()) {
+
+            if (shader.isSlang()) continue;
 
             if (shader.getShaderCode().isEmpty()) {
                 for (String shaderName : shader.mShaderNames) {
@@ -96,4 +102,6 @@ public enum ShaderLoader {
             }
         }
     }
+
+    public boolean isSlang() { return mShaderNames.get(0).endsWith(".slangp"); }
 }

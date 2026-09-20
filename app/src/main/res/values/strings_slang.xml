@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="shadersSlangCrt_title">Shaderlay CRT (.slangp)</string>
+    <string name="shadersSlangScanlines_title">Shaderlay Scanlines (.slangp)</string>
+    <string name="shadersSlangLcd_title">Shaderlay LCD (.slangp)</string>
+    <string name="shadersSlang_summary">Shaderlay preset applied to the game image</string>
+    <string name="shadersSlangCustom_title">Custom Slang preset</string>
+    <string name="shadersSlangCustom_summary">Choose a .slangp preset for this pass</string>
+    <string name="shadersSlangFolder_title">Slang shader library folder</string>
+    <string name="shadersSlangFolder_summary">Grant access to a folder containing presets and their dependencies. Choose Custom Slang preset in any shader pass to pick or change its preset.</string>
+    <string name="shadersSlangChoose">Choose a .slangp preset</string>
+    <string name="shadersSlangSearch">Search presets</string>
+    <string name="shadersSlangNoMatches">No matching presets</string>
+    <string name="shadersSlangEmpty">No .slangp presets found in this folder</string>
+    <string name="shadersSlangSaved">Preset assigned to this shader pass</string>
+    <string name="shadersSlangFolderSaved">Shader folder saved. Choose Custom Slang preset in a shader pass.</string>
+    <string name="shadersSlangSelectPass">Choose Custom Slang preset in a shader pass first</string>
+    <string name="shadersSlangChangeFolder">Choose folder</string>
+    <string name="shadersSlangSearching">Finding Slang presets…</string>
+    <string name="shadersSlangValidating">Checking preset…</string>
+    <string name="shadersSlangLoadingParameters">Loading shader parameters…</string>
+    <string name="shadersSlangParameters">Shader parameters</string>
+    <string name="shadersSlangPassParameters">Pass %1$d parameters</string>
+    <string name="shadersSlangParametersSummary">Adjust values for this preset. Changes apply the next time a game starts.</string>
+    <string name="shadersSlangNoParameters">This preset does not declare any adjustable parameters.</string>
+    <string name="shadersSlangParameterRange">Range: %1$s to %2$s. Step: %3$s. Values are rounded to the nearest step.</string>
+    <string name="shadersSlangReset">Reset defaults</string>
+    <string name="shadersSlangError">Slang preset unavailable: %1$s</string>
+    <string name="shadersSlangRenderError">Shader compilation failed. Using the unfiltered game image.</string>
+</resources>

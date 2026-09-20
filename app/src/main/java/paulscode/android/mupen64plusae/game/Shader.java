@@ -39,8 +39,8 @@ public class Shader {
     private int program;
     private int mTextureId;
     private int mTextureTarget = GLES20.GL_TEXTURE_2D;
-    private int mFboId = 0;
-    private int mFboTextureId = 0;
+    protected int mFboId = 0;
+    protected int mFboTextureId = 0;
     private final boolean mFirstPass;
     private final boolean mLastPass;
     private final int mShaderSubPass;
@@ -60,6 +60,8 @@ public class Shader {
     private ArrayList<TexturePassResult> mTexturePassResults = null;
 
     public static class TexturePassResult {
+        public int getWidth() { return fboWidth; }
+        public int getHeight() { return fboHeight; }
         private final int fboTextureId;
         private final int fboWidth;
         private final int fboHeight;
@@ -98,6 +100,7 @@ public class Shader {
         if (firstMultiPass) {
             fragmentCode = fragmentCode.replace("sampler2D PassPrev" + (shaderSubPass+1) + "Texture",
                     "samplerExternalOES PassPrev" + (shaderSubPass+1) + "Texture");
+            if (!firstPass) fragmentCode = fragmentCode.replace("#define FRAGMENT 1", "#define FRAGMENT 1\n#define SLANG_FLIP_ORIGINAL 1");
         }
 
         mFragmentCode = fragmentCode;
@@ -148,8 +151,13 @@ public class Shader {
         }
     }
 
-    private void initializeFbo()
+    protected void initializeFbo()
     {
+        int[] maxSize = new int[1];
+        GLES20.glGetIntegerv(GLES20.GL_MAX_TEXTURE_SIZE, maxSize, 0);
+        if (mOutputWidth > maxSize[0] || mOutputHeight > maxSize[0]) {
+            throw new IllegalStateException("Shader framebuffer exceeds maximum texture size");
+        }
         int[] framebuffers = new int[1];
         GLES20.glGenFramebuffers(1, framebuffers, 0);
         mFboId = framebuffers[0];
@@ -168,6 +176,9 @@ public class Shader {
 
         //Attach the texture to the framebuffer
         GLES20.glFramebufferTexture2D(GLES20.GL_FRAMEBUFFER, GLES20.GL_COLOR_ATTACHMENT0, GLES20.GL_TEXTURE_2D, mFboTextureId, 0);
+        if (GLES20.glCheckFramebufferStatus(GLES20.GL_FRAMEBUFFER) != GLES20.GL_FRAMEBUFFER_COMPLETE) {
+            throw new IllegalStateException("Shader framebuffer is incomplete");
+        }
 
     }
 
@@ -205,6 +216,8 @@ public class Shader {
         if (params[0] == GLES20.GL_FALSE) {
             Log.e("Shader", "Vertex Compilation error:\n" + GLES20.glGetShaderInfoLog(vertexShader)
                     + "\n Shader code:\n" + vertexShaderText);
+            GLES20.glDeleteShader(vertexShader);
+            throw new IllegalStateException("Vertex shader compilation failed");
         }
 
         int fragmentShader = GLES20.glCreateShader(GLES20.GL_FRAGMENT_SHADER);
@@ -215,6 +228,9 @@ public class Shader {
         if (params[0] == GLES20.GL_FALSE) {
             Log.e("Shader", "Fragment Compilation error:\n" + GLES20.glGetShaderInfoLog(fragmentShader)
                     + "\n Shader code:\n" + fragmentShaderText);
+            GLES20.glDeleteShader(vertexShader);
+            GLES20.glDeleteShader(fragmentShader);
+            throw new IllegalStateException("Fragment shader compilation failed");
         }
 
         program = GLES20.glCreateProgram();
@@ -222,6 +238,20 @@ public class Shader {
         GLES20.glAttachShader(program, fragmentShader);
 
         GLES20.glLinkProgram(program);
+        GLES20.glDeleteShader(vertexShader);
+        GLES20.glDeleteShader(fragmentShader);
+        GLES20.glGetProgramiv(program, GLES20.GL_LINK_STATUS, params, 0);
+        if (params[0] == GLES20.GL_FALSE) {
+            Log.e("Shader", GLES20.glGetProgramInfoLog(program));
+            throw new IllegalStateException("Shader program linking failed");
+        }
+    }
+
+    public void release() {
+        if (program != 0) GLES20.glDeleteProgram(program);
+        if (mFboId != 0) GLES20.glDeleteFramebuffers(1, new int[] {mFboId}, 0);
+        if (mFboTextureId != 0) GLES20.glDeleteTextures(1, new int[] {mFboTextureId}, 0);
+        program = mFboId = mFboTextureId = 0;
     }
 
     public void draw()
@@ -230,10 +260,6 @@ public class Shader {
         GLES20.glClearColor(0, 0, 0, 1);
 
         GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, mFboId);
-
-        if (!mLastPass) {
-            GLES20.glBindRenderbuffer(GLES20.GL_RENDERBUFFER, mFboTextureId);
-        }
 
         GLES20.glUseProgram(program);
         GLES20.glDisable(GLES20.GL_BLEND);
@@ -257,18 +283,23 @@ public class Shader {
             prevTexture.add(GLES20.glGetUniformLocation(program, "PassPrev" + (prevIndex+1) + "Texture"));
         }
 
-        GLES20.glVertexAttribPointer(texturePositionHandle, 2, GLES20.GL_FLOAT, false, 0, textureBuffer);
-        GLES20.glEnableVertexAttribArray(texturePositionHandle);
+        if (texturePositionHandle >= 0) {
+            GLES20.glVertexAttribPointer(texturePositionHandle, 2, GLES20.GL_FLOAT, false, 0, textureBuffer);
+            GLES20.glEnableVertexAttribArray(texturePositionHandle);
+        }
 
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
         GLES20.glBindTexture(mTextureTarget, mTextureId);
+
         GLES20.glUniform1i(textureHandle, 0);
         GLES20.glUniform1i(frameCount, mFrameCount);
 
         GLES20.glUniform2f(inputSize, (float) mInputWidth, (float) mInputHeight);
-        GLES20.glUniform2f(textureSize, (float) mInputWidth, (float) mInputHeight);
+        GLES20.glUniform2f(textureSize, (float) mTextureWidth, (float) mTextureHeight);
         GLES20.glUniform2f(outputSize, (float) mOutputWidth, (float) mOutputHeight);
 
+
+        int previousTextureUnit = 1;
         for (int prevIndex = 0; prevIndex < mTexturePassResults.size(); ++prevIndex) {
             if (prevInputSize.get(prevIndex) != -1) {
                 GLES20.glUniform2f(prevInputSize.get(prevIndex),
@@ -283,19 +314,22 @@ public class Shader {
             }
 
             if (prevTexture.get(prevIndex) != -1) {
-                GLES20.glActiveTexture(GLES20.GL_TEXTURE0 + prevIndex + 1);
+                GLES20.glActiveTexture(GLES20.GL_TEXTURE0 + previousTextureUnit);
                 int textureTarget = prevIndex == mShaderSubPass && mFirstMultiPass ? GLES11Ext.GL_TEXTURE_EXTERNAL_OES : GLES20.GL_TEXTURE_2D;
                 GLES20.glBindTexture(textureTarget, mTexturePassResults.get(prevIndex).fboTextureId);
-                GLES20.glUniform1i(prevTexture.get(prevIndex), prevIndex + 1);
+                GLES20.glUniform1i(prevTexture.get(prevIndex), previousTextureUnit++);
             }
         }
 
-        GLES20.glVertexAttribPointer(positionHandle, 2, GLES20.GL_FLOAT, false, 0, verticesBuffer);
-        GLES20.glEnableVertexAttribArray(positionHandle);
+        if (positionHandle >= 0) {
+            GLES20.glVertexAttribPointer(positionHandle, 2, GLES20.GL_FLOAT, false, 0, verticesBuffer);
+            GLES20.glEnableVertexAttribArray(positionHandle);
+        }
 
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
         GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4);
 
         ++mFrameCount;
     }
+
 }

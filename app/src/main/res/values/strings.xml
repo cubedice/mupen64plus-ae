@@ -713,6 +713,9 @@
     <string name="shadersCrtGeom_summary">Approximates the look of a CRT, this can be expensive in performance.</string>
     <string name="shadersScaleFx_title">ScaleFX</string>
     <string name="shadersScaleFx_summary">ScaleFX is an edge interpolation algorithm specialized in pixel art.</string>
+    <string name="shadersCrtGuestAdvanced_title"> CRT Guest Advanced shader (NTSC)</string>
+    <string name="shadersCrtGuestAdvanced_summary">Approximates the look of a CRT, this can be expensive in performance.</string>
+
 
     <string name="audioVolume_title">Audio Volume</string>
     <string name="audioBufferSize_title">Audio Buffer Size</string>

@@ -19,8 +19,11 @@ public class ShaderDrawer {
     private final ArrayList<ArrayList<Shader>> mShaderPasses = new ArrayList<>();
     private int mWidth = 0;
     private int mHeight = 0;
+    private int mGameTextureId, mSourceWidth, mSourceHeight;
+    private final Context mContext;
 
     public ShaderDrawer(Context context, ArrayList<ShaderLoader> selectedShaders) {
+        mContext = context.getApplicationContext();
         ShaderLoader.loadShaders(context);
 
         for (int index = 0; index < selectedShaders.size(); ++ index) {
@@ -28,6 +31,11 @@ public class ShaderDrawer {
             boolean last = index == selectedShaders.size() - 1;
 
             mShaderPasses.add(new ArrayList<>());
+            if (selectedShaders.get(index).isSlang()) {
+                mShaderPasses.get(index).add(new VulkanShader(mContext, selectedShaders.get(index), index, first));
+                if (last) mShaderPasses.get(index).add(new Shader(ShaderLoader.DEFAULT.getShaderCode().get(0), false, true, false, 1));
+                continue;
+            }
             for (int shaderCodeIndex = 0; shaderCodeIndex < selectedShaders.get(index).getShaderCode().size(); ++shaderCodeIndex) {
 
                 boolean actualLast = last && shaderCodeIndex == selectedShaders.get(index).getShaderCode().size() - 1;
@@ -82,42 +90,52 @@ public class ShaderDrawer {
             Shader.TexturePassResult prevResult = new Shader.TexturePassResult(texture, surface.mWidth, surface.mHeight,
                     surface.mWidth, surface.mHeight);
 
-            for (int subPassIndex = 0; subPassIndex < mShaderPasses.size(); ++subPassIndex ) {
+            mGameTextureId = texture;
+            mSourceWidth = surface.mWidth;
+            mSourceHeight = surface.mHeight;
+            try {
+                for (int subPassIndex = 0; subPassIndex < mShaderPasses.size(); ++subPassIndex ) {
 
-                ArrayList<Shader> shaderSubPasses = mShaderPasses.get(subPassIndex);
-                ArrayList<Shader.TexturePassResult> texturePassResults = new ArrayList<>();
+                    ArrayList<Shader> shaderSubPasses = mShaderPasses.get(subPassIndex);
+                    ArrayList<Shader.TexturePassResult> texturePassResults = new ArrayList<>();
 
-                for (int shaderIndex = 0; shaderIndex < shaderSubPasses.size(); ++shaderIndex) {
-                    Shader shader = shaderSubPasses.get(shaderIndex);
-                    shader.setSourceTexture(texture);
+                    for (int shaderIndex = 0; shaderIndex < shaderSubPasses.size(); ++shaderIndex) {
+                        Shader shader = shaderSubPasses.get(shaderIndex);
+                        shader.setSourceTexture(texture);
 
-                    // Always scale at the last shader of the first subpass
-                    if (subPassIndex == 0) {
-                        if (shaderIndex == shaderSubPasses.size() - 1) {
-                            Log.d("Shader", "subpass=" + subPassIndex + " shader=" + shaderIndex + " scale=yes");
-                            shader.setDimensions(surface.mWidth, surface.mHeight, surface.mWidth, surface.mHeight, width, height);
+                        // Slang presets choose dimensions per pass, then blit to the viewport.
+                        if (shader instanceof VulkanShader || shaderIndex > 0 && shaderSubPasses.get(shaderIndex - 1) instanceof VulkanShader) {
+                            shader.setDimensions(surface.mWidth, surface.mHeight, prevResult.getWidth(), prevResult.getHeight(), width, height);
+                        } else if (subPassIndex == 0) {
+                            if (shaderIndex == shaderSubPasses.size() - 1) {
+                                Log.d("Shader", "subpass=" + subPassIndex + " shader=" + shaderIndex + " scale=yes");
+                                shader.setDimensions(surface.mWidth, surface.mHeight, surface.mWidth, surface.mHeight, width, height);
+                            } else {
+                                Log.d("Shader", "subpass=" + subPassIndex + " shader=" + shaderIndex + " scale=no");
+                                shader.setDimensions(surface.mWidth, surface.mHeight, surface.mWidth, surface.mHeight, surface.mWidth, surface.mHeight);
+                            }
                         } else {
-                            Log.d("Shader", "subpass=" + subPassIndex + " shader=" + shaderIndex + " scale=no");
-                            shader.setDimensions(surface.mWidth, surface.mHeight, surface.mWidth, surface.mHeight, surface.mWidth, surface.mHeight);
+                            Log.d("Shader", "subpass=" + subPassIndex + " shader=" + shaderIndex + " scale=already");
+                            shader.setDimensions(surface.mWidth, surface.mHeight, width, height, width, height);
                         }
-                    } else {
-                        Log.d("Shader", "subpass=" + subPassIndex + " shader=" + shaderIndex + " scale=already");
-                        shader.setDimensions(surface.mWidth, surface.mHeight, width, height, width, height);
+
+                        texturePassResults.add(0, prevResult);
+
+                        shader.initShader();
+                        shader.setShaderSubPasses(new ArrayList<>(texturePassResults));
+                        texture = shader.getFboTextureId();
+                        prevResult = shader.getTexturePassResult();
                     }
-
-                    texturePassResults.add(0, prevResult);
-
-                    shader.initShader();
-                    shader.setShaderSubPasses(new ArrayList<>(texturePassResults));
-                    texture = shader.getFboTextureId();
-                    prevResult = shader.getTexturePassResult();
                 }
+            } catch (RuntimeException | LinkageError e) {
+                usePassthrough(e);
             }
         }
     }
 
     public void onSurfaceTextureDestroyed() {
         Log.i(TAG, "onSurfaceTextureDestroyed");
+        for (ArrayList<Shader> group : mShaderPasses) for (Shader shader : group) shader.release();
 
         if (mGameTexture != null) {
             Log.i(TAG, "Dettaching texture");
@@ -158,11 +176,28 @@ public class ShaderDrawer {
                 e.printStackTrace();
             }
 
-            for (ArrayList<Shader> shaderSubPasses : mShaderPasses) {
-                for (Shader shader : shaderSubPasses) {
-                    shader.draw();
-                }
+            try {
+                for (ArrayList<Shader> group : mShaderPasses) for (Shader shader : group) shader.draw();
+            } catch (RuntimeException | LinkageError e) {
+                usePassthrough(e);
+                mShaderPasses.get(0).get(0).draw();
             }
         }
+    }
+    private void usePassthrough(Throwable error) {
+        Log.e(TAG, "Unable to render shader chain; using passthrough", error);
+        for (ArrayList<Shader> group : mShaderPasses) for (Shader shader : group) shader.release();
+        mShaderPasses.clear();
+        Shader fallback = new Shader(ShaderLoader.DEFAULT.getShaderCode().get(0), true, true, true, 0);
+        fallback.setSourceTexture(mGameTextureId);
+        fallback.setDimensions(mSourceWidth, mSourceHeight, mSourceWidth, mSourceHeight, mWidth, mHeight);
+        fallback.setShaderSubPasses(new ArrayList<>());
+        fallback.initShader();
+        ArrayList<Shader> group = new ArrayList<>();
+        group.add(fallback);
+        mShaderPasses.add(group);
+        String message = mContext.getString(paulscode.android.mupen64plusae.R.string.shadersSlangError, error.getMessage());
+        new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> android.widget.Toast.makeText(
+                mContext, message, android.widget.Toast.LENGTH_LONG).show());
     }
 }

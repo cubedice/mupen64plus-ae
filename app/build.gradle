@@ -2,6 +2,13 @@ apply plugin: 'com.android.application'
 apply plugin: 'signing'
 apply from: '../build_common/version_common.gradle'
 
+// Robolectric's Android sandbox runs on the same Java version as the app sources.
+tasks.withType(Test).configureEach {
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(17)
+    }
+}
+
 android {
 
     namespace = "paulscode.android.mupen64plusae"
@@ -19,9 +26,18 @@ android {
 
     buildFeatures.viewBinding = true
     buildFeatures.buildConfig = true
+    externalNativeBuild {
+        cmake {
+            path 'src/main/cpp/CMakeLists.txt'
+            version '3.22.1'
+        }
+    }
 
     defaultConfig {
         applicationId = "org.mupen64plusae.v3.alpha"
+        externalNativeBuild {
+            cmake { arguments '-DANDROID_STL=c++_shared' }
+        }
     }
     buildTypes {
         release {
@@ -64,6 +80,9 @@ android {
 
     sourceSets {
         main {
+            // The imported Rust library has no SONAME, so CMake links it with -l and
+            // AGP does not discover it as a runtime file. Package it explicitly.
+            jniLibs.srcDirs += "$buildDir/rashader"
             debug {
                 jniLibs.srcDirs += '../ndkLibs/libs/debug'
             }
@@ -89,6 +108,9 @@ android {
     lint {
         abortOnError = false
         checkReleaseBuilds = false
+    }
+    testOptions {
+        unitTests.includeAndroidResources = true
     }
 }
 
@@ -142,6 +164,7 @@ dependencies {
     }
     implementation 'net.java.dev.jna:jna:5.17.0@aar'
     testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.robolectric:robolectric:4.11.1'
     implementation project(':ae-bridge')
     implementation project(':miniupnp-bridge')
     implementation project(':mupen64plus-audio-android')
